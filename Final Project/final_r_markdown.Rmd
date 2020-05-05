@@ -1,0 +1,367 @@
+---
+title: "Final report"
+author: "Ayumi Mutoh"
+date: "April 29, 2020"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r load data}
+library(tidyverse)
+load('C:/Users/ayumi/OneDrive/Documents/Stat 3041/final project/covid19_dataset.Rdata')
+
+```
+
+## **object 1**
+```{r objective 1}
+ThreeState <- dataset%>%
+  filter(date == '2020-04-13') %>%
+  arrange(desc(total_cases))
+
+HighestStates <- ThreeState[1:3,]
+HighestStates$state
+```
+The three states with highest total cases are `r HighestStates$state` [^1]
+
+[^1]: As of April 13th 
+
+New York is the highest. The second is New Jersey, and the third is Massachusetts.
+
+```{r getdataset 1}
+NewYorkData <- HighestStates%>%
+  filter(state == 'New York')
+
+NewJerseyData <- HighestStates%>%
+  filter(state == 'New Jersey')
+
+MassachusettsData <- HighestStates%>%
+  filter(state == 'Massachusetts')
+
+NewYorkTotalCases <- NewYorkData$total_cases
+NewYorkTotalDeath <- NewYorkData$total_deaths
+
+NewJerseyTotalCases <- NewJerseyData$total_cases
+NewJerseyTotalDeath <- NewJerseyData$total_deaths
+
+MassachusettsTotalCases <- MassachusettsData$total_cases
+MassachusettsTotalDeath <- MassachusettsData$total_deaths
+```
+
+It is assumed that the number of deaths follows a binomial distribution. I used the neutral prior for Bayesian analysis to get credible interval of the mortality rate for the three states based on beta distribution assumption. 
+
+
+Each state’s 95% of credible interval for the mortality rate is 
+```{r credible interval 1}
+
+#creadible interval for New York
+paste('Bayesian CI New York Lower Limit', qbeta(0.025, 1/3+NewYorkTotalDeath, 1/3+NewYorkTotalCases-NewYorkTotalDeath), 
+      'Upper Limit:', qbeta(0.975, 1/3+NewYorkTotalDeath, 1/3+NewYorkTotalCases-NewYorkTotalDeath))
+
+#creadible interval for New Jersey
+paste('Bayesian CI New Jersey Lower Limit', qbeta(0.025, 1/3+NewJerseyTotalDeath, 1/3+NewJerseyTotalCases-NewJerseyTotalDeath), 
+      'Upper Limit:', qbeta(0.975, 1/3+NewJerseyTotalDeath, 1/3+NewJerseyTotalCases-NewJerseyTotalDeath))
+
+#credible interval for Massachusetts
+paste('Bayesian CI Massachusetts Lower Limit', qbeta(0.025, 1/3+MassachusettsTotalDeath, 1/3+MassachusettsTotalCases-MassachusettsTotalDeath), 
+      'Upper Limit:', qbeta(0.975, 1/3+MassachusettsTotalDeath, 1/3+MassachusettsTotalCases-MassachusettsTotalDeath))
+```
+As the credible intervals say, the mortality rate follows the total cases order. It shows the mor-tality rate would be high if the total cases are high. 
+
+The plot shows the mortality rate as of April 13th. 
+```{r objective 1 plot}
+library(tidyverse)
+demo <- tribble(
+  ~State, ~DeathProb,
+  "New York", NewYorkTotalDeath/NewYorkTotalCases,
+  "New Jersey", NewJerseyTotalDeath/NewJerseyTotalCases,
+  "Massachusetts", MassachusettsTotalDeath/MassachusettsTotalCases
+)
+ggplot(data = demo)+
+  geom_bar(mapping = aes(x = State, y=DeathProb, fill = State ), stat = 'identity')
+```
+
+-------------------------------------------------------------------------------------------------------
+## **object 2**
+```{r setdataset2}
+NewYorkDailyData <- dataset %>%
+  filter((date<="2020-04-13"&date>="2020-04-07"), state == "New York")
+
+NewJerseyDailyData <- dataset %>%
+  filter((date<="2020-04-13"&date>="2020-04-07"), state == "New Jersey")
+
+MassachusettsDailyData <- dataset %>%
+  filter((date<="2020-04-13"&date>="2020-04-07"), state == "Massachusetts")
+
+#compute mean of daily cases 
+NYmean <- mean(NewYorkDailyData$daily_cases)
+NJmean <- mean(NewJerseyDailyData$daily_cases)
+MAmean <- mean(MassachusettsDailyData$daily_cases)
+```
+
+
+```{r bootstrapping 2}
+n = nrow(NewYorkDailyData)
+M <- 1000000
+
+#new york
+NY_bar = rep(NA, M)
+
+for (i in 1:M) {
+  NY_sample <- rpois(n, NYmean)
+  NY_bar[i] <- mean(NY_sample)
+}
+
+#new jersey
+NJ_bar = rep(NA, M)
+
+for (i in 1:M) {
+  NJ_sample <- rpois(n, NJmean)
+  NJ_bar[i] <- mean(NJ_sample)
+}
+
+MA_bar = rep(NA, M)
+
+for (i in 1:M) {
+  MA_sample <- rpois(n, MAmean)
+  MA_bar[i] <- mean(MA_sample)
+}
+
+```
+The interval estimate for the mean of daily confirmed cases during April 7th, 2020 to April 13th, 2020 is calculated for each three states by using parametric bootstrapping and Bayesian analysis.
+
+
+I used parametric bootstrapping method to compute 95% confidence interval based on a Pois-son distribution. For Bayesian analysis, as no prior information is available, I used the neutral prior for lambda. 
+
+
+
+* NY each intervals
+(95% confidence interval, credible interval, prediction interval)
+```{r NYinterval}
+#confidence interval 
+c(quantile(NY_bar, 0.025), quantile(NY_bar, 0.975))
+
+#credible interval and prediction interval for NY
+NYDailyCasesSum <- sum(NewYorkDailyData$daily_cases)
+paste('Bayesian NY CI Lower Limit:', qgamma(0.025, 1/3+NYDailyCasesSum, 0+n),
+      'Upper Limit:', qgamma(0.975, 1/3+NYDailyCasesSum, 0+n))
+
+NY_lambda_noninfo <- rgamma(M,1/3+NYDailyCasesSum, 0+n)
+NY_info <- rpois(M, NY_lambda_noninfo)
+paste('Bayesian NY PI Lower Limit:', quantile(NY_info,0.025),'Upper Limit:', quantile(NY_info, 0.975))
+```
+
+
+* NJ each intervals
+(95% confidence interval, credible interval, prediction interval)
+```{r NJintervals}
+#confidence interval 
+c(quantile(NJ_bar, 0.025), quantile(NJ_bar, 0.975))
+
+#credible interval and prediction interval for NJ
+NJDailyCasesSum <- sum(NewJerseyDailyData$daily_cases)
+paste('Bayesian NJ CI Lower Limit:', qgamma(0.025, 1/3+NJDailyCasesSum, 0+n),
+      'Upper Limit:', qgamma(0.975, 1/3+NJDailyCasesSum, 0+n))
+
+NJ_lambda_noninfo <- rgamma(M,1/3+NJDailyCasesSum, 0+n)
+NJ_info <- rpois(M, NJ_lambda_noninfo)
+paste('Bayesian NJ PI Lower Limit:', quantile(NJ_info,0.025),'Upper Limit:', quantile(NJ_info, 0.975))
+```
+
+
+* MA each intervals
+(95% confidence interval, credible interval, prediction interval)
+```{r MAintervals}
+#confidence interval
+c(quantile(MA_bar, 0.025), quantile(MA_bar, 0.975))
+
+#credible interval and prediction interval for MA 
+MADailyCasesSum <- sum(MassachusettsDailyData$daily_cases)
+paste('Bayesian MA CI Lower Limit:', qgamma(0.025, 1/3+MADailyCasesSum, 0+n),
+      'Upper Limit:', qgamma(0.975, 1/3+MADailyCasesSum, 0+n))
+
+MA_lambda_noninfo <- rgamma(M,1/3+MADailyCasesSum, 0+n)
+MA_info <- rpois(M, MA_lambda_noninfo)
+paste('Baysian MA PI Lower Limit:', quantile(MA_info,0.025),'Upper Limit:', quantile(MA_info, 0.975))
+```
+
+The confidence interval and credible interval have almost same value. The predict interval is wider than other intervals.
+
+```{r plot2}
+library(tidyverse)
+#plot 
+plotdata <- dataset %>%
+  filter((date<="2020-04-13"&date>="2020-04-07"), (state == "New York" | state == 'New Jersey' | state == 'Massachusetts'))
+
+ggplot(data = plotdata, mapping = aes(x = date, y = daily_cases, color = state))+
+  geom_point()+
+  geom_smooth()
+```
+
+The plot shows the daily cases for the three states during April 7th to April 13th. New Jersey and Massachusetts have almost flat lines; therefore, those two states’ daily cases growth rate re-mains constant. It seems daily cases start decreasing after April 12th. New York line has the max on April 9th and April 10th, then it starts decreasing. 
+
+
+------------------------------------------------------------------------------------------------------
+## **objective 3**
+
+The growth rate for the three states is unknown. I used nonparametric bootstrapping to find the 95% confidence interval for the mean growth rate during the period of March 31st, 2020 to April 6th, 2020 and April 7th, 2020 to April 13th, 2020. 
+```{r set dataset 3}
+#new york
+NYGrowthRate1 <- dataset %>%
+  filter((date<="2020-04-06"& date>="2020-03-31"), state == "New York")
+
+NYGR1 <- NYGrowthRate1$daily_rates
+
+NYGrowthRate2 <- dataset %>%
+  filter((date<="2020-04-13"&date>="2020-04-07"), state == "New York")
+
+NYGR2 <- NYGrowthRate2$daily_rates
+
+#new jersey
+NJGrowthRate1 <- dataset %>%
+  filter((date<="2020-04-06"& date>="2020-03-31"), state == "New Jersey")
+
+NJGR1 <- NJGrowthRate1$daily_rates
+
+NJGrowthRate2 <- dataset %>%
+  filter((date<="2020-04-13"&date>="2020-04-07"), state == "New Jersey")
+
+NJGR2 <- NJGrowthRate2$daily_rates
+
+#Massachusetts 
+MAGrowthRate1 <- dataset %>%
+  filter((date<="2020-04-06"& date>="2020-03-31"), state == "Massachusetts")
+
+MAGR1 <- MAGrowthRate1$daily_rates
+
+MAGrowthRate2 <- dataset %>%
+  filter((date<="2020-04-13"&date>="2020-04-07"), state == "Massachusetts")
+
+MAGR2 <- MAGrowthRate2$daily_rates
+```
+
+```{r nonparametric bootstrapping}
+#data for bootstrapping
+n = nrow(NYGrowthRate1)
+M <- 1000000
+
+#NY bootstrapping
+#3/31/2020-4/6/2020 
+NY_bar1 <- rep(NA, M)
+
+for (i in 1:M) {
+  NY_sample1 <- sample(NYGR1, n, replace = TRUE)
+  
+  NY_bar1[i] <- mean(NY_sample1)
+}
+
+#4/7/2020-4/13/2020 
+NY_bar2 <- rep(NA, M)
+
+for (i in 1:M) {
+  NY_sample2 <- sample(NYGR2, n, replace = TRUE)
+  
+  NY_bar2[i] <- mean(NY_sample2)
+}
+
+#NJ bootstrapping
+#3/31/2020-4/6/2020 
+NJ_bar1 <- rep(NA, M)
+
+for (i in 1:M) {
+  NJ_sample1 <- sample(NJGR1, n, replace = TRUE)
+  
+  NJ_bar1[i] <- mean(NJ_sample1)
+}
+#4/7/2020-4/13/2020 
+NJ_bar2 <- rep(NA, M)
+
+for (i in 1:M) {
+  NJ_sample2 <- sample(NJGR2, n, replace = TRUE)
+  
+  NJ_bar2[i] <- mean(NJ_sample2)
+}
+
+#MA bootstrapping
+#3/31/2020-4/6/2020 
+MA_bar1 <- rep(NA, M)
+
+for (i in 1:M) {
+  MA_sample1 <- sample(MAGR1, n, replace = TRUE)
+  
+  MA_bar1[i] <- mean(MA_sample1)
+}
+
+#4/7/2020-4/13/2020 
+MA_bar2 <- rep(NA, M)
+
+for (i in 1:M) {
+  MA_sample2 <- sample(MAGR2, n, replace = TRUE)
+  
+  MA_bar2[i] <- mean(MA_sample2)
+}
+
+```
+
+
+*NY 95% confidence interval
+
+March 31st to April 6th
+```{r NYinterval3}
+#confidence interval 
+c(quantile(NY_bar1, 0.025), quantile(NY_bar1, 0.975))
+```
+April 7th to April 13th 
+```{r NYinterval latter}
+#confidence interval 
+c(quantile(NY_bar2, 0.025), quantile(NY_bar2, 0.975))
+```
+
+
+*NJ 95% confidence interval 
+
+March 31st to April 6th
+```{r NJinterval3}
+#confidence interval 
+c(quantile(NJ_bar1, 0.025), quantile(NJ_bar1, 0.975))
+```
+April 7th to April 13th 
+```{r NJinterval latter}
+#confidence interval 
+c(quantile(NJ_bar2, 0.025), quantile(NJ_bar2, 0.975))
+```
+
+
+*MA 95% confidence interval 
+
+March 31st to April 6th
+```{r MAinterval3}
+#confidence interval 
+c(quantile(MA_bar1, 0.025), quantile(MA_bar1, 0.975))
+```
+April 7th to April 13th 
+```{r MAinterval latter}
+#confidence interval 
+c(quantile(MA_bar2, 0.025), quantile(MA_bar2, 0.975))
+```
+
+
+During the period of March 31st to April 6th, mean growth rate is higher than the period of April 7th to April 13th in all the states. 
+Stay at home order was effective starting March 22nd in New York, March 21st in New Jersey, March 24th in Massachusetts. Based on the analysis, it is evident that stay at home order seems to be highly effective in reduction of cases over the period of time. 
+
+
+```{r plot3}
+library(tidyverse)
+plotdata2 <- dataset %>%
+  filter((date>="2020-03-31"), (state == "New York" | state == 'New Jersey' | state == 'Massachusetts'))
+
+ggplot(data = plotdata2, mapping = aes(x = date, y = daily_rates, color = state))+
+  geom_point()+
+  geom_smooth()
+```
+
+It seems there is a rise in Massachusetts’s daily growth rate between April 6th to April 9th. 
+The plot shows the growth rate of the period of March 31st to April 13th. New York has the highest total cases, but the daily growth rate is lower than other states. 
+
